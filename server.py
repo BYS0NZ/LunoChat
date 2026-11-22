@@ -1,18 +1,47 @@
 import socket
+import threading
 
-s = socket.socket()
-print("Socket successfully created")
+host = '127.0.0.1'
+port = 59000
 
-port = 6767
-s.bind(('', port))
-print(f"socket binded to port {port}")
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((host, port))
+server.listen()
 
-s.listen(5)
-print("socket is listening")
+clients = []
+nicknames = []
 
-while True:
-    c, addr = s.accept()
-    print('Got connection from', addr)
-    message = 'Thank you for connecting'
-    c.send(message.encode())
-    c.close()
+def broadcast(message):
+    for client in clients:
+        client.send(message)
+
+def handle(client):
+    while True:
+        try:
+            message = client.recv(1024)
+            broadcast(message)
+        except:
+            index = clients.index(client)
+            clients.remove(client)
+            client.close()
+            nickname = nicknames[index]
+            broadcast(f'{nickname} left the chat room!'.encode('utf-8'))
+            nicknames.remove(nickname)
+            break
+
+def receive():
+    while True:
+        client, address = server.accept()
+        print(f'Connected with {str(address)}')
+
+        client.send('Write your nickname: '.encode('utf-8'))
+        nickname = client.recv(1024).decode('utf-8')
+        nicknames.append(nickname)
+        clients.append(client)
+
+        print(f'Nickname of the client is {nickname}!')
+        broadcast(f'{nickname} joined the chat room!'.encode('utf-8'))
+        client.send('You are now connected to the server!'.encode('utf-8'))
+
+        thread = threading.Thread(target=handle, args=(client,))
+        thread.start()
