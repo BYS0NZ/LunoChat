@@ -34,7 +34,7 @@ def receive():
         client, address = server.accept()
         print(f'Connected with {str(address)}')
 
-        client.send('Write your nickname: '.encode('utf-8'))
+        client.send('nickname: '.encode('utf-8'))
         nickname = client.recv(1024).decode('utf-8')
         nicknames.append(nickname)
         clients.append(client)
@@ -45,3 +45,7 @@ def receive():
 
         thread = threading.Thread(target=handle, args=(client,))
         thread.start()
+
+if __name__ == "__main__":
+    print('Server is listening...')
+    receive()
