@@ -1,6 +1,7 @@
 import socket
 import sys
 import threading
+from framing import send_message, recv_message
 
 lock = threading.Lock()
 connection = None                 # the one active chat connection
@@ -51,10 +52,8 @@ def connect(host, port):
 def receive_loop(conn):
     while True:
         try:
-            data = conn.recv(1024)
-        except OSError:
-            break
-        if not data:              # empty bytes = peer closed the connection
+            data = recv_message(conn)
+        except (ConnectionError, OSError, ValueError):
             break
         print(f"\rPeer: {data.decode('utf-8')}")
     print("Peer disconnected. Press Enter to quit.")
@@ -86,7 +85,7 @@ def main():
             text = input()
             if closed.is_set():
                 break
-            connection.sendall(text.encode("utf-8"))
+            send_message(connection, text.encode("utf-8"))
     except (KeyboardInterrupt, EOFError, OSError):
         pass
     finally:
