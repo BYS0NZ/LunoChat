@@ -1,20 +1,24 @@
 import socket
 import sys
 import threading
+from cryptography.exceptions import InvalidTag
+from crypto import SecureChannel
 from framing import send_message, recv_message
 
 lock = threading.Lock()
 connection = None                 # the one active chat connection
+initiator = False                 # True if WE dialed out, False if they dialed us
 connected = threading.Event()     # set once a connection exists
 closed = threading.Event()        # set when the chat is over
 
 
-def set_connection(conn):
+def set_connection(conn, is_initiator):
     """Keep the first connection that arrives, reject any others."""
-    global connection
+    global connection, initiator
     with lock:
         if connection is None:
             connection = conn
+            initiator = is_initiator
             connected.set()
             return True
     conn.close()
@@ -32,7 +36,7 @@ def listen(port):
             conn, addr = server.accept()
         except OSError:
             break
-        if set_connection(conn):
+        if set_connection(conn, False):     # they dialed us
             print(f"Peer {addr} connected.")
 
 
@@ -45,17 +49,17 @@ def connect(host, port):
         closed.set()
         connected.set()   # wake up the main thread so it can exit
         return
-    if set_connection(conn):
+    if set_connection(conn, True):      # we dialed out
         print(f"Connected to {host}:{port}")
 
 
-def receive_loop(conn):
+def receive_loop(channel):
     while True:
         try:
-            data = recv_message(conn)
-        except (ConnectionError, OSError, ValueError):
+            data = channel.recv()
+        except (ConnectionError, OSError, ValueError, InvalidTag):
             break
-        print(f"\rPeer: {data.decode('utf-8')}")
+        print(f"\rPeer: {data.decode('utf-8', errors='replace')}")
     print("Peer disconnected. Press Enter to quit.")
     closed.set()
 
@@ -77,7 +81,16 @@ def main():
     if closed.is_set():
         return
 
-    threading.Thread(target=receive_loop, args=(connection,), daemon=True).start()
+    # Handshake: swap keys and set up encryption
+    try:
+        channel = SecureChannel(connection, initiator)
+    except (ConnectionError, OSError, ValueError) as e:
+        print(f"Handshake failed: {e}")
+        connection.close()
+        return
+    print("Secure channel established.")
+
+    threading.Thread(target=receive_loop, args=(channel,), daemon=True).start()
 
     print("You can type now. Ctrl+C to quit.")
     try:
@@ -85,7 +98,7 @@ def main():
             text = input()
             if closed.is_set():
                 break
-            send_message(connection, text.encode("utf-8"))
+            channel.send(text.encode("utf-8"))
     except (KeyboardInterrupt, EOFError, OSError):
         pass
     finally:
