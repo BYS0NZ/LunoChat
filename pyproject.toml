@@ -23,4 +23,5 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
+exclude = ["experiments"]
 line-length = 100
